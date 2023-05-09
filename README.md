@@ -1,7 +1,7 @@
 # Carte_pneumatique
 Code de la carte pneumatique.
 
-améliorations + bugs potentiels : 
+#améliorations + bugs potentiels : 
 
 -   Faire passer la lecture analogique de température PT100 en DMA
 
@@ -9,41 +9,41 @@ améliorations + bugs potentiels : 
 
 -   "Bugs" : on ne peut pas envoyer plusieurs commandes à la chaîne sur la nucléo (output : HAL_TIMEOUT), et en mode debug, si on envoit la prochaine commande avant d'exécuter les parties principales de la boucle while du code (régulation de la pression + actions en fonction du mot de commande + retours à la Rpi), cette commande ne sera pas reçue, et il y aura un HAL_TIMEOUT.
 
-Actionneurs/capteurs gérés par la nucléo:
+#Actionneurs/capteurs gérés par la nucléo:
 
-Canons (pour propulsion des cerises):
-ESC Canon 1 : D-Shot
-ESC Canon 2 : D-Shot
-ESC Canon 3 : D-Shot
+  Canons (pour propulsion des cerises):
+  ESC Canon 1 : D-Shot
+  ESC Canon 2 : D-Shot
+  ESC Canon 3 : D-Shot
 
-Électrovannes (pour actionner piston de la pince gâteaux n°x OU pour purger le réservoir):
-Électrovanne 1 (n°1) : TOR
-Électrovanne 2 (n°2) : TOR
-Électrovanne 3 (n°3) : TOR
-Électrovanne 4 (purge) : TOR
+  Électrovannes (pour actionner piston de la pince gâteaux n°x OU pour purger le réservoir):
+  Électrovanne 1 (n°1) : TOR
+  Électrovanne 2 (n°2) : TOR
+  Électrovanne 3 (n°3) : TOR
+  Électrovanne 4 (purge) : TOR
 
-ESC Turbine (pour aspiration cerises) : D-Shot
-ESC Compresseur (pour réservoir) : D-Shot
+  ESC Turbine (pour aspiration cerises) : D-Shot
+  ESC Compresseur (pour réservoir) : D-Shot
 
-Capteur de pression (pression du réservoir) : I2C ou analog input
-Capteur de température (pour Compresseur réservoir) : I2C ou analog input
+  Capteur de pression (pression du réservoir) : I2C ou analog input
+  Capteur de température (pour Compresseur réservoir) : I2C ou analog input
 
-Cahier des charges des actions à réaliser :
-Canons (pour propulsion des cerises):
-Démarrer/Arrêter les moteurs canon (pas tous à la même vitesse, à voir en fonction de la balistique) lorsqu'on veut éjecter des cerises.
-Sélectionner au moins 3 niveaux de vitesse, différent pour chaque moteur
+  Cahier des charges des actions à réaliser :
+  Canons (pour propulsion des cerises):
+  Démarrer/Arrêter les moteurs canon (pas tous à la même vitesse, à voir en fonction de la balistique) lorsqu'on veut éjecter des cerises.
+  Sélectionner au moins 3 niveaux de vitesse, différent pour chaque moteur
 
-Électrovannes 1 à 3: activer en TOR les EV lorsqu'on choppe les gâteaux avec les barillet.
-Électrovanne 4: purger le réservoir en fin de match/lorsque l'arrêt d'urgence est enclenché. optionnellement la purge servira à souffler les cerises devant le robot
+  Électrovannes 1 à 3: activer en TOR les EV lorsqu'on choppe les gâteaux avec les barillet.
+  Électrovanne 4: purger le réservoir en fin de match/lorsque l'arrêt d'urgence est enclenché. optionnellement la purge servira à souffler les cerises devant le robot
 
-ESC Turbine : Activer lorsqu'on veut aspirer des cerises.
-ESC Compresseur :
+  ESC Turbine : Activer lorsqu'on veut aspirer des cerises.
+  ESC Compresseur :
 
-Activer en fonction de la pression du capteur de pression du réservoir pour garder une pression stable dans le réservoir.
-Retourner à la Rpi la pression courante du réservoir en 10èmes de bar [XZZZZZZZ] avec des valeurs entre 0 et 127, donc le dernier bit est Libre.
+  Activer en fonction de la pression du capteur de pression du réservoir pour garder une pression stable dans le réservoir.
+  Retourner à la Rpi la pression courante du réservoir en 10èmes de bar [XZZZZZZZ] avec des valeurs entre 0 et 127, donc le dernier bit est Libre.
 
-Capteur de pression : lire en continu les valeurs de pression du réservoir
-Capteur de température : lire en continu et inhiber le compresseur si température critique (l'erreur doit être remontée à la Rpi).
+  Capteur de pression : lire en continu les valeurs de pression du réservoir
+  Capteur de température : lire en continu et inhiber le compresseur si température critique (l'erreur doit être remontée à la Rpi).
 
 Information binaire minimales requises, structure "mots" 8 bits en écriture (W): [XXZZZZZZ]
 - [II] : instruction:
