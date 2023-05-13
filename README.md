@@ -104,3 +104,5 @@ Retours à la Rpi:
 
 Liens utiles :
 Activation D-Shot :  https://www.youtube.com/watch?v=fBDvfHr_i0w
+
+Good documentation D-Shot : https://brushlesswhoop.com/dshot-and-bidirectional-dshot/
