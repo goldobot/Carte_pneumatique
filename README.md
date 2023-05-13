@@ -12,3 +12,5 @@ TOOLS-DOCUMENTATION -> DOC
 
 Le script python pour tester l'envoi de commandes sur la nucléo et les réponses des capteurs (fichiers excel) sont ici:
 TOOLS-DOCUMENTATION -> TOOLS
+
+![Pneuma_Pinout](https://github.com/goldobot/Carte_pneumatique/assets/90452075/5299fd09-087e-4b0d-a9cc-e80d472ba9d5)
