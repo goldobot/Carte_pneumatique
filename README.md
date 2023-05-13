@@ -100,3 +100,7 @@ Retours à la Rpi:
   > [E] = 1 : température Critique du compresseur
   > [C] = 0 : Erreur de communication, non réception du mot de commande 8 bits par la nucléo
   > [C] = 1 : Communication OK, la nucléo a reçu la commande et la traiter
+
+
+Liens utiles :
+Activation D-Shot :  https://www.youtube.com/watch?v=fBDvfHr_i0w
