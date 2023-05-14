@@ -25,9 +25,9 @@ class PneumaticCommands:
     # testé et validé
     def reset(self):
         LOGGER.info("Reset nucleo")
-        self._serial.write(b'\x00')
+        self._serial.write(b'\x01')
     
-    """ inutilisé pour l'instant caŕla régulation est gérée par la carte pneuma
+    """ inutilisé pour l'instant car la régulation est gérée par la carte pneuma
     def stop_compressor(self):
         LOGGER.info("Stop compressor")
         if self._pressure_command > 0x3F:
