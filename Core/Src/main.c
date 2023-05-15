@@ -39,14 +39,29 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
+//Partie moteurs (D-Shot)
+#define CANONS_SPEED_1 100
+#define CANONS_SPEED_2 300
+#define CANONS_SPEED_3 400
+#define TURBINE_SPEED_1 100
+#define TURBINE_SPEED_2 300
+#define TURBINE_SPEED_3 400
+#define COMPRESSOR_SPEED 1200
 //effet : change le bitrate du protocole D-Shot (jamais testé autre que 150)
-// autres valeurs existantes : 300, 600, 1200
+//autres valeurs existantes : 300, 600, 1200
 #define DSHOT_SPEED DSHOT150
 
+//Partie Pression
 //size of pressure values history buffer : effet : change proportionnellement la rapidité de réponse du moteur du compresseur
-#define PRESSURES_SIZE 20
+#define PRESSURES_SIZE 10
+// effet : change la pression de Commande initiale (avant 1ère commande compresseur)
+uint8_t Press_order = 0; //en 10e de bar
 
+//Partie electrovannes
+#define PULSE_TIME 150 //valeur du pulse (ms)
 
+//Partie Capteur de Temperature
+#define COMPR_CRIT_TEMP 60 //à modifier en fonction du système (position de la sonde PT100)
 
 /* USER CODE END PM */
 
@@ -108,22 +123,12 @@ int main(void)
 	HAL_StatusTypeDef res1;
 	HAL_StatusTypeDef res2;
 
-	//Partie moteurs (D-Shot)
-	uint16_t motor_speed_1 = 100;
-	uint16_t motor_speed_2 = 300;
-	uint16_t motor_speed_3 = 400;
-	uint16_t turbine_speed_1 = 100;
-	uint16_t turbine_speed_2 = 300;
-	uint16_t turbine_speed_3 = 400;
-	uint16_t compressor_speed = 1200;
-
 	//Partie commandes et lecture des capteurs
 	uint8_t command_buffer = 0; // Signal commande Rpi -> Nucléo, pas de log pour l'instant donc taille de 1
 	uint8_t return_buffer[2]; //infos retournée Nucléo -> Rpi
 	uint8_t I2C_buf[4]; //Infos I2C : P_sensor (4 bytes) ou T_sensor_Comp (?? bytes)
 	// uint8_t p_buf[4]; //Pression P_sensor (2 bytes) et température P_sensor (2 bytes)
 	//garder les logs des commandes
-
 
 	//partie Capteur de Pression
 	//modèle : 2513130810401
@@ -139,16 +144,11 @@ int main(void)
 	//tableaux des 100 dernières valeurs de pression, toutes les valeurs initialisées à 0
 	uint8_t pressures[PRESSURES_SIZE] = {0};
 	//valeur pour remplir le tableau des valeurs de pressions avant de calculer la moyennes des pressions
-	uint8_t pressures_full_counter = 0;
 	uint32_t pressures_mean = 0;
-
-	// effet : change la pression de Commande initiale (avant 1ère commande compresseur)
-	uint8_t Press_order = 0; //en 10e de bar
 
 	//Partie capteur de température du compresseur
 	uint16_t raw;
 	float compr_temp;
-	uint8_t compr_crit_temp = 60; //à modifier en fonction du système (position de la sonde PT100)
 
 	// explication de la conversion des valeurs de l'ADC en température
 	// dans le fichier "Equation_Sonde_PT100, il y a 2 courbes, ces coeffs sont respectivement les pentes et les ordonnées à l'origine
@@ -158,9 +158,6 @@ int main(void)
 	float raw_to_res_offset = -2.47;
 	float res_to_temp_mult = -0.74;
 	float res_to_temp_offset = 104;
-
-	//Partie electrovannes
-	uint16_t t_pulse_OFF = 1000; //valeur du pulse (ms)
 
 	//Partie Arrêt d'urgence
 	uint8_t AU_Current_Status = GPIO_PIN_RESET;
@@ -223,14 +220,51 @@ int main(void)
 		//récupération du mot de commande
 
 		//fréquence recommandée de boucle totale : 10Hz
+		AU_Current_Status = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_1);
 
-
-		//Reset de tout lorsque l'AU repasse à l'état haut alors qu'il était à l'état bas juste avant
-		//if ((AU_Current_Status == GPIO_PIN_RESET) && AU_Old_Status == GPIO_PIN_SET)
+		//Reset de tout lorsque l'AU repasse à l'état bas (Coupé) alors qu'il était à l'état haut (non coupé) juste avant
+		if ((AU_Current_Status == GPIO_PIN_RESET) && AU_Old_Status == GPIO_PIN_SET){
+			// arrêt moteurs (compr, canons, turbine)
+			my_motor_value[0] = 0;
+			my_motor_value[1] = 0;
+			my_motor_value[2] = 0;
+			my_motor_value[3] = 0;
+			my_motor_value[4] = 0;
+			HAL_Delay(2600);
+			// arrêt EV 1, 2, 3 et Purge
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
+			// arrêt LCD et LED Enable
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
+			// reset la régulation de pression
+			Press_order = 0;
+		}
 
 		//Si l'AU était à l'état haut et qu'il passe à l'état bas, reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
-
+		if (AU_Current_Status == GPIO_PIN_SET && AU_Old_Status == GPIO_PIN_RESET){
+			// arrêt moteurs (compr, canons, turbine)
+			my_motor_value[0] = 0;
+			my_motor_value[1] = 0;
+			my_motor_value[2] = 0;
+			my_motor_value[3] = 0;
+			my_motor_value[4] = 0;
+			HAL_Delay(2600);
+			// arrêt EV 1, 2, 3 et Purge
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
+			// arrêt LCD et LED Enable
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
+			// reset la régulation de pression
+			Press_order = 0;
+		}
 		//changer les valeurs des AU status
+		AU_Old_Status = AU_Current_Status;
 
 		//Réception du mot de 8 Bit de Goldo (par UART à priori)
 		res1 = HAL_UART_Receive(&huart2, &command_buffer, 1, 100);
@@ -277,10 +311,10 @@ int main(void)
 			if (pressures_mean > (Press_order)){ // arrêter compresseur si dépassement de la pression de consigne
 				my_motor_value[4] = 0;
 			}
-			else if (pressures_mean < (Press_order - 4)) { // démarrage compresseur avec hysteresis de 0.4 bar
+			else if (pressures_mean < (Press_order - 2)) { // démarrage compresseur avec hysteresis de 0.4 bar
 				if(Press_order <= 0){}
 				else {
-					my_motor_value[4] = compressor_speed;
+					my_motor_value[4] = COMPRESSOR_SPEED;
 				}
 			}
 			else {}
@@ -309,20 +343,19 @@ int main(void)
 		//get temperature value from raw value (100-Ohm = 0°C, 375-Ohm = 800°C)
 		//first : conversion from raw value to resistance value : 2790=>112 kOhm, 90=>6 kOhm
 		//then : conversion from resistance value to temperature value :  112 kOhm=>22 °c, 6 kOhm=>100°c
-		compr_temp = -0.74 * (0.0393 * raw - 2.47) + 104;
+		compr_temp = res_to_temp_mult * (raw_to_res_mult * raw + raw_to_res_offset) + res_to_temp_offset;
 
 		//si Température critique, arrêter le compresseur et notifier la température critique dans le retour à la Rpi
-		if (compr_temp > compr_crit_temp) {
+		if (compr_temp > COMPR_CRIT_TEMP) {
 			my_motor_value[4] = 0;
 			return_buffer[1]|=128;
 		}
 
 
-		//#####AJOUTER un module pour chronométrer + tout reset après 100s (fin de match) en mode match.#####
 		if (res1 == HAL_OK){
 			switch(command_buffer >> 6){
 			case 0:
-				//Mode 1 [00000000] : Reset nucleo: arrêt de TOUT
+				//Mode 1 [00000001] : Reset nucleo: arrêt de TOUT
 				if (command_buffer == 1){
 					// arrêt moteurs (compr, canons, turbine)
 					my_motor_value[0] = 0;
@@ -339,6 +372,15 @@ int main(void)
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
 				}
+				//Mode 2 [00000010] : Reset Moteurs
+				else if (command_buffer == 2){
+					my_motor_value[0] = 0;
+					my_motor_value[1] = 0;
+					my_motor_value[2] = 0;
+					my_motor_value[3] = 0;
+					my_motor_value[4] = 0;
+					HAL_Delay(2600);
+				}
 
 				break;
 			case 1:
@@ -349,13 +391,13 @@ int main(void)
 					my_motor_value[0] = 0;
 				}
 				else if ((command_buffer & 48) >> 4 == 1){
-					my_motor_value[0] = motor_speed_1;
+					my_motor_value[0] = CANONS_SPEED_1;
 				}
 				else if ((command_buffer & 48) >> 4 == 2){
-					my_motor_value[0] = motor_speed_2;
+					my_motor_value[0] = CANONS_SPEED_2;
 				}
 				else{
-					my_motor_value[0] = motor_speed_3;
+					my_motor_value[0] = CANONS_SPEED_3;
 				}
 
 				//écriture dans le moteur 2 (right)
@@ -363,13 +405,13 @@ int main(void)
 					my_motor_value[1] = 0;
 				}
 				else if ((command_buffer & 12) >> 2 == 1){
-					my_motor_value[1] = motor_speed_1;
+					my_motor_value[1] = CANONS_SPEED_1;
 				}
 				else if ((command_buffer & 12) >> 2 == 2){
-					my_motor_value[1] = motor_speed_2;
+					my_motor_value[1] = CANONS_SPEED_2;
 				}
 				else{
-					my_motor_value[1] = motor_speed_3;
+					my_motor_value[1] = CANONS_SPEED_3;
 				}
 
 				//écriture dans le moteur 3 (top)
@@ -377,24 +419,25 @@ int main(void)
 					my_motor_value[2] = 0;
 				}
 				else if ((command_buffer & 3) == 1){
-					my_motor_value[2] = motor_speed_1;
+					my_motor_value[2] = CANONS_SPEED_1;
 				}
 				else if ((command_buffer & 3) == 2){
-					my_motor_value[2] = motor_speed_2;
+					my_motor_value[2] = CANONS_SPEED_2;
 				}
 				else{
-					my_motor_value[2] = motor_speed_3;
+					my_motor_value[2] = CANONS_SPEED_3;
 				}
 
 				break;
 			case 2:
 				//Mode 3 [10]: Compresseur
-				//[000000] : arrêt Compresseur + Purge EV4
+				//[10000000] : arrêt Compresseur + Consigne Pression => 0 + Purge EV4
 				if ((command_buffer ^ 128) == 0){
 					my_motor_value[4] = 0;
-					HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
+					HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
+					Press_order = 0;
 				}
-				//[PPPPPP] : Val de consigne Pression, à récup SSI différente pour régulation au prochain tour de boucle
+				//[10PPPPPP] : Val de consigne Pression, à récup SSI différente pour régulation au prochain tour de boucle
 				Press_order = command_buffer ^ (2 << 6);
 
 				break;
@@ -411,36 +454,29 @@ int main(void)
 
 				//cas 2 : EV-Pulse [1101000Z] => [0] : rien, [1] pulse ON-OFF-ON 1*, avec intervalle t-pulse_OFF
 				if ((command_buffer & 240) >> 4 == 13){
+
 					//Pulse EV 1
-					if ((command_buffer & 8) >> 3 == 1){
-						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
-						HAL_Delay(100);
+					if ((command_buffer & 8) >> 3 == 1 && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7)){
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-						HAL_Delay(t_pulse_OFF);
+						HAL_Delay(PULSE_TIME);
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
 					}
 					//Pulse EV 2
-					if ((command_buffer & 4) >> 2 == 1){
-						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-						HAL_Delay(100);
+					if ((command_buffer & 4) >> 2 == 1 && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4)){
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-						HAL_Delay(100);
+						HAL_Delay(PULSE_TIME);
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 					}
 					//Pulse EV 3
-					if ((command_buffer & 2) >> 1 == 1){
-						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
-						HAL_Delay(100);
+					if ((command_buffer & 2) >> 1 == 1 && HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3)){
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-						HAL_Delay(t_pulse_OFF);
+						HAL_Delay(PULSE_TIME);
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
 					}
 					//Pulse EV Purge
-					if ((command_buffer & 1) == 1){
-						HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
-						HAL_Delay(100);
+					if ((command_buffer & 1) == 1 && HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0)){
 						HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
-						HAL_Delay(t_pulse_OFF);
+						HAL_Delay(PULSE_TIME);
 						HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
 					}
 				}
@@ -452,13 +488,13 @@ int main(void)
 						my_motor_value[3] = 0;
 					}
 					else if ((command_buffer & 3) == 1){
-						my_motor_value[3] = turbine_speed_1;
+						my_motor_value[3] = TURBINE_SPEED_1;
 					}
 					else if ((command_buffer & 3) == 2){
-						my_motor_value[3] = turbine_speed_2;
+						my_motor_value[3] = TURBINE_SPEED_2;
 					}
 					else{
-						my_motor_value[3] = turbine_speed_3;
+						my_motor_value[3] = TURBINE_SPEED_3;
 					}
 				}
 

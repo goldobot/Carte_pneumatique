@@ -26,7 +26,11 @@ class PneumaticCommands:
     def reset(self):
         LOGGER.info("Reset nucleo")
         self._serial.write(b'\x01')
-    
+        
+    def reset_motors(self):
+        LOGGER.info("Reset all 5 motors")
+        self._serial.write(b'\x02')
+
     """ inutilisé pour l'instant car la régulation est gérée par la carte pneuma
     def stop_compressor(self):
         LOGGER.info("Stop compressor")
@@ -73,8 +77,8 @@ class PneumaticCommands:
         _val = VALVES | a*8 & 0x08 | b*4 & 0x04 | c*2 & 0x02 | e & 0x01
         self._serial.write(bytes([_val]))
         
-    def pulse_valves(self, a, b, c, e):
-        LOGGER.info("Valves : a = " + str(a) + " | b = " + str(b) + " | c = " + str(c) + " | e = " + str(e))
+    def pulse_valve(self, a, b, c, e):
+        LOGGER.info("Pulse on Valves : a = " + str(a) + " | b = " + str(b) + " | c = " + str(c) + " | e = " + str(e))
         val_ = VALVES_PULSE | a*8 & 0x08 | b*4 & 0x04 | c*2 & 0x02 | e & 0x01
         self._serial.write(bytes([val_]))
 
