@@ -58,15 +58,15 @@
 uint8_t Press_order = 0; //en 10e de bar
 
 //Partie electrovannes
-#define PULSE_TIME 150 //valeur du pulse (ms)
+#define PULSE_TIME 150 //valeur du pulse des EV (ms)
+uint8_t last_EV_command = 0;
 
 //Partie Capteur de Temperature
 #define COMPR_CRIT_TEMP 60 //à modifier en fonction du système (position de la sonde PT100)
 
-//Partie HONTEUSE : htim7 et htim6 en même tempsdans la même trame d'interrupt == NOPE
-//donc : vu que durée du reload de htim6 est de 1ms => counter quand AU => 120000*1ms = 120s = 2 minutes : tempo de 2 minutes après arrêt d'urgence pour purger
-int honteux = 0;
-uint8_t enable_honteux = 0;
+//Partie timer global pour tempo AU => purge
+int BAU_tick;
+uint8_t BAU_tick_enable = 0;
 
 /* USER CODE END PM */
 
@@ -81,7 +81,6 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim6;
-TIM_HandleTypeDef htim7;
 DMA_HandleTypeDef hdma_tim1_ch1;
 DMA_HandleTypeDef hdma_tim2_ch1;
 DMA_HandleTypeDef hdma_tim2_ch3;
@@ -104,9 +103,8 @@ static void MX_TIM6_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_ADC1_Init(void);
 static void MX_CAN_Init(void);
-static void MX_TIM7_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -170,12 +168,6 @@ int main(void)
 	uint8_t AU_Current_Status = GPIO_PIN_RESET;
 	uint8_t AU_Old_Status = GPIO_PIN_RESET;
 
-	// Partie EV
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
-
 
   /* USER CODE END 1 */
 
@@ -204,9 +196,8 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM1_Init();
   MX_I2C1_Init();
-  MX_ADC1_Init();
   MX_CAN_Init();
-  MX_TIM7_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 
 	dshot_init(DSHOT_SPEED);
@@ -222,7 +213,6 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
 	//start to count (for tim6 interruption)
 	HAL_TIM_Base_Start_IT(&htim6);
-	HAL_TIM_Base_Start_IT(&htim7);
 	//a peu près temps minimal de delay pour laisser le temps aux moteurs de s'initialiser
 	HAL_Delay(2600);
 
@@ -237,7 +227,7 @@ int main(void)
 		//fréquence recommandée de boucle totale : 10Hz
 		AU_Current_Status = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_1);
 
-		//Reset de tout lorsque l'AU repasse à l'état bas (Coupé) alors qu'il était à l'état haut (non coupé) juste avant
+		//Reset de tout lorsque l'AU repasse à l'état haut (non coupé) alors qu'il était à l'état bas (coupé) juste avant
 		if ((AU_Current_Status == GPIO_PIN_RESET) && AU_Old_Status == GPIO_PIN_SET){
 			// arrêt moteurs (compr, canons, turbine)
 			my_motor_value[0] = 0;
@@ -250,17 +240,15 @@ int main(void)
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
 			// arrêt LCD et LED Enable
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
 			// reset la régulation de pression
 			Press_order = 0;
-			//CODE MOCHE/HONTEUX
-			enable_honteux = 1;
 		}
 
-		//Si l'AU était à l'état haut et qu'il passe à l'état bas, reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
+		//Si l'AU passe à l'état bas (coupé) alors qu'il était à l'état haut (non coupé), reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
 		if (AU_Current_Status == GPIO_PIN_SET && AU_Old_Status == GPIO_PIN_RESET){
 			// arrêt moteurs (compr, canons, turbine)
 			my_motor_value[0] = 0;
@@ -268,19 +256,18 @@ int main(void)
 			my_motor_value[2] = 0;
 			my_motor_value[3] = 0;
 			my_motor_value[4] = 0;
-			HAL_Delay(2600);
 			// arrêt EV 1, 2, 3 et Purge
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
+			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
 			// arrêt LCD et LED Enable
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
 			// reset la régulation de pression
 			Press_order = 0;
-			// ET LA C'EST MOCHE :
-
+			// tempo de 2 min, puis purge
+			BAU_tick_enable = 1;
 		}
 		//changer les valeurs des AU status
 		AU_Old_Status = AU_Current_Status;
@@ -449,7 +436,7 @@ int main(void)
 
 				break;
 			case 2:
-				//Mode 3 [10]: Compresseur
+				//Mode 3 [10]: Compresseur / INIT
 				//[10000000] : arrêt Compresseur + Consigne Pression => 0 + Purge EV4
 				if ((command_buffer ^ 128) == 0){
 					my_motor_value[4] = 0;
@@ -491,12 +478,6 @@ int main(void)
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
 						HAL_Delay(PULSE_TIME);
 						HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET);
-					}
-					//Pulse EV Purge
-					if ((command_buffer & 1) == 1 && HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_0)){
-						HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
-						HAL_Delay(PULSE_TIME);
-						HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
 					}
 				}
 
@@ -962,44 +943,6 @@ static void MX_TIM6_Init(void)
 }
 
 /**
-  * @brief TIM7 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM7_Init(void)
-{
-
-  /* USER CODE BEGIN TIM7_Init 0 */
-
-  /* USER CODE END TIM7_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM7_Init 1 */
-
-  /* USER CODE END TIM7_Init 1 */
-  htim7.Instance = TIM7;
-  htim7.Init.Prescaler = 60000;
-  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim7.Init.Period = 2000;
-  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM7_Init 2 */
-
-  /* USER CODE END TIM7_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -1124,13 +1067,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if (htim->Instance == htim6.Instance)
 	{
 		dshot_write(my_motor_value);
-
-		if (enable_honteux != 0) honteux++;
-		if (honteux >= 120000){
-			enable_honteux = 0;
+	}
+	//on start la tempo si le BAU est enclenché
+	if (BAU_tick_enable == 1){
+		BAU_tick++;
+		// on purge quand on veut purger, 1000 => 1s
+		if (BAU_tick > 50000){
+			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
+			BAU_tick = 0;
+			BAU_tick_enable = 0;
 			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
-			HAL_Delay(6000);
-			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_RESET);
 		}
 	}
 }

@@ -80,7 +80,7 @@ class PneumaticCommands:
     def pulse_valve(self, a, b, c, e):
         LOGGER.info("Pulse on Valves : a = " + str(a) + " | b = " + str(b) + " | c = " + str(c) + " | e = " + str(e))
         val_ = VALVES_PULSE | a*8 & 0x08 | b*4 & 0x04 | c*2 & 0x02 | e & 0x01
-        self._serial.write(bytes([val_]))
+        self._serial.write(bytes([val_]))                               
 
     # testé et validé (pas de tes des signaux sur la carte)
     def start_turbine(self, speed):
