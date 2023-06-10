@@ -1073,7 +1073,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		BAU_tick++;
 		// on purge quand on veut purger, 1000 => 1s
 		if (BAU_tick > 50000){
-			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
 			BAU_tick = 0;
 			BAU_tick_enable = 0;
 			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);

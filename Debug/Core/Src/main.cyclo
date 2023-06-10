@@ -11,4 +11,4 @@ main.c:950:13:MX_USART2_UART_Init	2
 main.c:983:13:MX_DMA_Init	1
 main.c:1013:13:MX_GPIO_Init	1
 main.c:1065:6:HAL_TIM_PeriodElapsedCallback	4
-main.c:1089:6:Error_Handler	1
+main.c:1088:6:Error_Handler	1
