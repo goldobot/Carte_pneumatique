@@ -65,8 +65,8 @@ void Error_Handler(void);
 #define GPIO_Input_AU_STATUS_GPIO_Port GPIOF
 #define ADC1_IN1_A_TEMP_Pin GPIO_PIN_0
 #define ADC1_IN1_A_TEMP_GPIO_Port GPIOA
-#define ADC1_IN2_A_PRES_Pin GPIO_PIN_1
-#define ADC1_IN2_A_PRES_GPIO_Port GPIOA
+#define ADC2_IN_A_PRESS_Pin GPIO_PIN_1
+#define ADC2_IN_A_PRESS_GPIO_Port GPIOA
 #define USART2_TX_Pin GPIO_PIN_2
 #define USART2_TX_GPIO_Port GPIOA
 #define GPIO_Output_EV_3_Pin GPIO_PIN_3
