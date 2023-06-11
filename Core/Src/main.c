@@ -277,6 +277,13 @@ int main(void)
 
 		//Réception du mot de 8 Bit de Goldo (par UART à priori)
 		res1 = HAL_UART_Receive(&huart2, &command_buffer, 1, 100);
+		if(res1 == HAL_OK){
+			//Notifier à la Rpi la bonne réception du mot de commande
+			return_buffer[0]|= 1;
+			//Retourner les infos à la Rpi !
+			HAL_UART_Transmit(&huart2, return_buffer, 1, 100);
+		}
+
 
 
 		//Lecture de la pression en I2C et activation OU NON du compresseur en fonction
@@ -336,9 +343,11 @@ int main(void)
 			//return_buffer[0] = (uint8_t)pressure_val;
 		}
 		//retourner [10000000] si on arrive pas à communiquer avec le capteur de Pression
+		/*
 		else {
 			return_buffer[0]|=128;
 		}
+		*/
 
 		//Lecture Température du compresseur réservoir et activation ou désactivation du compresseur en fonction SSI il est pas déjà désactivé
 		//#####A IMPLEMENTER : Lecture de la température en analogique sonde PT100#####
@@ -355,10 +364,12 @@ int main(void)
 		compr_temp = res_to_temp_mult * (raw_to_res_mult * raw + raw_to_res_offset) + res_to_temp_offset;
 
 		//si Température critique, arrêter le compresseur et notifier la température critique dans le retour à la Rpi
+		/*
 		if (compr_temp > COMPR_CRIT_TEMP) {
 			my_motor_value[4] = 0;
 			return_buffer[1]|=128;
 		}
+		*/
 
 
 		if (res1 == HAL_OK){
@@ -511,16 +522,7 @@ int main(void)
 				}
 				break;
 			}
-
-			//Notifier à la Rpi la bonne réception du mot de commande
-			return_buffer[0]|= 1;
 		}
-		else {return_buffer[0]&= 0;}
-
-		//Retourner la potentielle erreur de COM avec la nucléo !
-
-		//Retourner les infos à la Rpi !
-		HAL_UART_Transmit(&huart2, return_buffer, 2, 10);
 
 		HAL_Delay(1);
 
