@@ -246,6 +246,9 @@ int main(void)
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
 			// reset la régulation de pression
 			Press_order = 0;
+			//reset le timer de purge
+			BAU_tick = 0;
+			BAU_tick_enable = 0;
 		}
 
 		//Si l'AU passe à l'état bas (coupé) alors qu'il était à l'état haut (non coupé), reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
@@ -330,7 +333,7 @@ int main(void)
 
 
 			//retourner à la Rpi la pression courante du réservoir en dixième de bar [0ZZZZZZZ], MSB utilisé pour erreur de lecture en I2C de la pression
-			return_buffer[0] = (uint8_t)pressure_val;
+			//return_buffer[0] = (uint8_t)pressure_val;
 		}
 		//retourner [10000000] si on arrive pas à communiquer avec le capteur de Pression
 		else {
@@ -510,14 +513,14 @@ int main(void)
 			}
 
 			//Notifier à la Rpi la bonne réception du mot de commande
-			return_buffer[1]|= 1;
+			return_buffer[0]|= 1;
 		}
-		else {return_buffer[1]&= 0;}
+		else {return_buffer[0]&= 0;}
 
 		//Retourner la potentielle erreur de COM avec la nucléo !
 
 		//Retourner les infos à la Rpi !
-		//HAL_UART_Transmit(&huart2, return_buffer, 2, 10);
+		HAL_UART_Transmit(&huart2, return_buffer, 2, 10);
 
 		HAL_Delay(1);
 
@@ -1072,7 +1075,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if (BAU_tick_enable == 1){
 		BAU_tick++;
 		// on purge quand on veut purger, 1000 => 1s
-		if (BAU_tick > 50000){
+		if (BAU_tick > 30000){
 			BAU_tick = 0;
 			BAU_tick_enable = 0;
 			HAL_GPIO_WritePin(GPIOF, GPIO_PIN_0, GPIO_PIN_SET);
