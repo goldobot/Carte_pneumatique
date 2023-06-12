@@ -68,6 +68,12 @@ uint8_t last_EV_command = 0;
 int BAU_tick;
 uint8_t BAU_tick_enable = 0;
 
+//Partie commandes et retours Rpi
+uint8_t command_buffer = 0; // Signal commande Rpi -> Nucléo, pas de log pour l'instant donc taille de 1
+uint8_t return_buffer[2]; //infos retournée Nucléo -> Rpi
+HAL_StatusTypeDef res1;
+HAL_StatusTypeDef res2;
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -115,6 +121,18 @@ static void MX_ADC1_Init(void);
 //Partie D-Shot
 uint16_t my_motor_value[5] = {0, 0, 0, 0, 0};
 
+//Partie UART en interrupt
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	res1=HAL_UART_Receive_IT(&huart2, &command_buffer, 1);
+	if(res1 == HAL_OK){
+		//Notifier a la Rpi la bonne reception du mot de commande
+		return_buffer[0]|= 1;
+		//Retourner les infos a la Rpi !
+		HAL_UART_Transmit(&huart2, return_buffer, 1, 100);
+	}
+}
+
 
 /* USER CODE END 0 */
 
@@ -125,12 +143,8 @@ uint16_t my_motor_value[5] = {0, 0, 0, 0, 0};
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	HAL_StatusTypeDef res1;
-	HAL_StatusTypeDef res2;
 
-	//Partie commandes et lecture des capteurs
-	uint8_t command_buffer = 0; // Signal commande Rpi -> Nucléo, pas de log pour l'instant donc taille de 1
-	uint8_t return_buffer[2]; //infos retournée Nucléo -> Rpi
+	//Partie lecture des capteurs
 	uint8_t I2C_buf[4]; //Infos I2C : P_sensor (4 bytes) ou T_sensor_Comp (?? bytes)
 	// uint8_t p_buf[4]; //Pression P_sensor (2 bytes) et température P_sensor (2 bytes)
 	//garder les logs des commandes
@@ -215,6 +229,9 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim6);
 	//a peu près temps minimal de delay pour laisser le temps aux moteurs de s'initialiser
 	HAL_Delay(2600);
+	//On lance l'interruption sur l'UART2, à relancer dans le callback !
+	HAL_UART_Receive_IT(&huart2, &command_buffer, 1);
+
 
   /* USER CODE END 2 */
 
@@ -222,12 +239,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		//récupération du mot de commande
-
-		//fréquence recommandée de boucle totale : 10Hz
+		//Partie AU : récupération du state de l'AU
 		AU_Current_Status = HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_1);
 
-		//Reset de tout lorsque l'AU repasse à l'état haut (non coupé) alors qu'il était à l'état bas (coupé) juste avant
+		//res1=HAL_UART_Receive(&huart2, &command_buffer, 1, 100);
+
+		//Partie Reset_small : Reset de tout lorsque l'AU repasse à l'état haut (non coupé) alors qu'il était à l'état bas (coupé) juste avant
 		if ((AU_Current_Status == GPIO_PIN_RESET) && AU_Old_Status == GPIO_PIN_SET){
 			// arrêt moteurs (compr, canons, turbine)
 			my_motor_value[0] = 0;
@@ -251,7 +268,7 @@ int main(void)
 			BAU_tick_enable = 0;
 		}
 
-		//Si l'AU passe à l'état bas (coupé) alors qu'il était à l'état haut (non coupé), reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
+		//Partie Reset_Full : Si l'AU passe à l'état bas (coupé) alors qu'il était à l'état haut (non coupé), reset tout et lancer un timer de 2 minutes, au bout duquel on purge !
 		if (AU_Current_Status == GPIO_PIN_SET && AU_Old_Status == GPIO_PIN_RESET){
 			// arrêt moteurs (compr, canons, turbine)
 			my_motor_value[0] = 0;
@@ -274,17 +291,6 @@ int main(void)
 		}
 		//changer les valeurs des AU status
 		AU_Old_Status = AU_Current_Status;
-
-		//Réception du mot de 8 Bit de Goldo (par UART à priori)
-		res1 = HAL_UART_Receive(&huart2, &command_buffer, 1, 100);
-		if(res1 == HAL_OK){
-			//Notifier à la Rpi la bonne réception du mot de commande
-			return_buffer[0]|= 1;
-			//Retourner les infos à la Rpi !
-			HAL_UART_Transmit(&huart2, return_buffer, 1, 100);
-		}
-
-
 
 		//Lecture de la pression en I2C et activation OU NON du compresseur en fonction
 		res2 = HAL_I2C_Master_Receive(&hi2c1, 0xf1, I2C_buf, 4, 200);
