@@ -1,0 +1,104 @@
+#Actionneurs/capteurs gérés par la nucléo ; ne sont présentés ici que ceux qui sont actuellement utilisés, les autres seront détaillés à la fin de ce document : 
+Électrovannes (pour actionner piston de la pince gâteaux n°x OU pour purger le réservoir):
+Électrovanne 1 (n°1) : TOR
+Électrovanne 2 (n°2) : TOR
+Électrovanne 3 (n°3) : TOR
+Électrovanne 4 (purge) : TOR
+
+ESC Compresseur (pour réservoir) : D-Shot
+Capteur de pression (WSEN PDUS pour pression du réservoir) : I2C (ou analog input si besoin si l'I2C ne marche plus)
+Capteur de température (Sonde NT100 pour Compresseur réservoir) : analog input
+
+
+#Cahier des charges des actions à réaliser : 
+Électrovannes 1 à 3: activer en TOR les EV lorsqu'on choppe les gâteaux avec les « pneumatic_tampones » du barillet.
+Électrovanne 4: pouvoir purger le réservoir en fin de match/lorsque l'arrêt d'urgence est enclenché.
+
+ESC Compresseur :
+Activer en fonction de la pression du capteur de pression du réservoir pour garder une pression stable.
+
+Capteur de pression : lire en continu les valeurs de pression du réservoir et 
+Capteur de température : lire en continu et inhiber le compresseur si température critique.
+
+Protocole de Commande:
+Structure "mots" 8 bits en écriture (W): [XXZZZZZZ]
+Premiers bits : mode
+[00ZZ]: reset [00000000] ou arrêt compresseur avec purge optionnelle [00ZZZZZZ]
+[01ZZ]: canon
+[10ZZ]: compresseur
+[1100]: EV
+[1101]: EV Pulse
+[1110]: Turbine
+[1111]: LCD/LED
+
+Mode Reset, [00ZZZZZZ]:
+* Reset nucléo: [00000001]:
+  arrêt de TOUT + purge (LED,LCD,moteurs et EV)
+
+* Reset moteurs: [00000010]:
+  arrêt de tout les moteurs pendant 2.6s/init des ESC
+
+* Reset Compresseur: [00000100]:
+arrêt du compresseur, purge optionnelle:
+  * Arret compresseur + arret regulation de pression [00000100] : 
+  * Arret compresseur + arret regulation de pression + purge du reservoir [00000101] : 
+
+Mode Canons, [01ZZZZZZ]:
+[ZZZZZZ] : 3*2 bits : [GGDDHH]
+  * [00] : arrêt
+  * [01] ; [10] et [11] : vitesse 1, 2 et 3
+
+Mode Compresseur, [10ZZZZZZ]:
+[PPPPPP] : mise en pression du compresseur à la valeur consigne (=[PPPPPP] x 0,1bar) qui ne dépassera jamais 6,3 bar (grâce à la soupape de sécurité)
+
+Mode Electrovannes, [1100ZZZZ]:
+[ZZZZ] : 4*1 bit : [ABCD]
+  * [0] : arrêt, pas de pression/pince ouverte
+  * [1] : active, pression/pince fermée
+
+Mode Electrovannes Pulse (On-Off-On), [1101ZZZZ]:
+[ZZZZ] : 4*1 bit : [ABCD]
+  * [0] : pas d'action
+  * [1] : séquence de pulse ON-OFF-ON exécutée une seule fois avec un interval
+
+Mode Turbine, [111000ZZ]:
+  * [01] ; [10] et [11] : vitesse 1 ; 2 et 3
+
+Mode LED et LCD [111100ZZ]
+  LED [1111000Z]
+  * [0] LED OFF
+  * [1] LED ON
+  LCD [111100Yx]
+  * [0] LCD OFF
+  * [1] LCD ON
+
+Retours à la Rpi, [0000000Z]:
+  Retours à la Rpi à chaque tour de boucle
+  * [0] : erreur de COM avec la nucléo*
+  * [1] : Commande reçue correctement
+
+Autres fonctionnalités :
+•	Lorsque l’arrêt d’urgence est tapé : reset de tout (moteurs, EV, LED, LCD et pression de commande à 0), puis on purge 30s après
+•	Lorsqu’on arme l’arrêt d’urgence : reset de tout (moteurs,… à 0).
+•	Les commandes sont traitées avec un buffer circulaire.
+•	Une nouvelle commande D-SHOT est envoyée au moteur du compresseur à chaque tour de boucle en fonction de la moyenne des 10 dernières valeurs relevées sur le capteur de pression du réservoir.
+•	La température du compresseur est relevée à chaque tour de boucle, on coupe le compresseur si une température critique est mesurée.
+
+#Actionneurs/capteurs pouvant être géré par la nucléo, mais non utilisé actuellement : 
+
+Canons (pour propulsion des cerises):
+ESC Canon 1 : D-Shot
+ESC Canon 2 : D-Shot
+ESC Canon 3 : D-Shot
+
+ESC Turbine (pour aspiration cerises) : D-Shot
+
+#Reste du cahier des charges :
+
+Canons (pour propulsion des cerises):
+Démarrer/Arrêter les moteurs canon (pas tous à la même vitesse, à voir en fonction de la balistique) lorsqu'on veut éjecter des cerises.
+Sélectionner au moins 3 niveaux de vitesse, différent pour chaque moteur
+
+ESC Turbine : Activer lorsqu'on veut aspirer des cerises.
+
+#Reste du protocole de commande :

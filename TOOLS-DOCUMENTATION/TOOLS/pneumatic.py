@@ -31,14 +31,11 @@ class PneumaticCommands:
         LOGGER.info("Reset all 5 motors")
         self._serial.write(b'\x02')
 
-    """ inutilisé pour l'instant car la régulation est gérée par la carte pneuma
-    def stop_compressor(self):
+    def stop_compressor(self, purge):
         LOGGER.info("Stop compressor")
-        if self._pressure_command > 0x3F:
-            self._pressure_command = 0x3F
-        val = RESET | self._pressure_command
-        self._serial.write(bytes[val])
-    """
+        if (purge):
+            self._serial.write(b'\x81')
+        else : self._serial.write(b'\x80')
 
     # testé et validé (pas de test des signaux sur la carte)
     def shoot_cannon(self, speed_left, speed_right, speed_top):
@@ -66,10 +63,12 @@ class PneumaticCommands:
         val = COMPRESSOR | pressure
         self._serial.write(bytes([val]))
 
+    """
     # testé et validé (pas de test des signaux sur la carte)
     def purge_compressor(self):
         LOGGER.info("Purge compressor")
         self._serial.write(b'\x80')
+        """
 
     # testé et validé
     def set_valves(self, a, b, c, e):
