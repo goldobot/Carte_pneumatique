@@ -22,9 +22,6 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "dshot.h"
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,8 +45,8 @@
 #define TURBINE_SPEED_2 300
 #define TURBINE_SPEED_3 400
 #define COMPRESSOR_SPEED 1200
-//effet : change le bitrate du protocole D-Shot (jamais testé autre que 150)
-//autres valeurs existantes : 300, 600, 1200
+//DSHOT_SPEED effet : change le bitrate du protocole D-Shot (jamais testé autre que 150=150kbits/s)
+//autres valeurs existantes : 300, 600, 1200, voir Carte_pneumatique > TOOLS-DOCUMENTATION > DOC >
 #define DSHOT_SPEED DSHOT150
 //Compresseur : pour le Stop et le start
 uint8_t COMPRESSOR_ENABLE = 0;
@@ -61,50 +58,52 @@ uint8_t COMPRESSOR_ENABLE = 0;
 uint8_t Press_order = 0; //en 10e de bar
 
 //Partie electrovannes
-#define PULSE_TIME 150 //valeur du pulse des EV (ms)
+#define PULSE_TIME 60 //valeur du pulse des EV (ms)
 uint8_t last_EV_command = 0;
 
 //Partie Capteur de Temperature
 #define COMPR_CRIT_TEMP 60 //à modifier en fonction du système (position de la sonde PT100)
+#define TEMPERATURES_SIZE 10
 
 //Partie timer global pour tempo AU => purge
 int BAU_tick;
 uint8_t BAU_tick_enable = 0;
 
 //Partie commandes et retours Rpi
-//On teste une liste chaînée pour historique des commandes en FIFO
-typedef struct Node {
-	uint8_t command;
-	struct Node* next;
-} Node;
+//On teste un ring buffer
+#define RING_BUF_SIZE 25
+uint8_t r_buf_length;
+uint8_t write_index;
+uint8_t read_index;
 
-void insert(Node ** head, uint8_t value){
-	Node* newNode = malloc(sizeof(Node));
-	newNode->command=value;
-	newNode->next=NULL;
+uint8_t commands_buffer[RING_BUF_SIZE];
 
-	if(*head == NULL){
-		*head = newNode;
-	}
+void write_r_buffer(uint8_t * r_buf, uint8_t command){
+	if (r_buf_length == RING_BUF_SIZE){}
 	else {
-		Node * current = *head;
-		while (current->next != NULL){
-			current = current->next;
-		}
-		current->next = newNode;
+		r_buf[write_index] = command;
+		write_index++;
+		r_buf_length++;
+	}
+	if (write_index == RING_BUF_SIZE){
+		write_index = 0;
 	}
 }
-uint8_t dequeue(Node ** head){
-	if (*head == NULL){
-		return -1;
+
+uint8_t read_r_buffer(uint8_t * r_buf){
+	uint8_t val;
+	if (r_buf_length == 0){return -1;}
+	else {
+		val = r_buf[read_index];
+		read_index++;
+		r_buf_length--;
 	}
-	uint8_t ret_val = (*head)->command;
-	Node * previous_head =*head;
-	*head=(*head)->next;
-	free(previous_head);
-	return ret_val;
+	if (read_index == RING_BUF_SIZE){
+		read_index = 0;
+	}
+	return val;
 }
-Node * command_hist;
+
 uint8_t command_buffer = 0; // Signal commande Rpi -> Nucléo, pas de log pour l'instant donc taille de 1
 uint8_t return_buffer[2]; //infos retournée Nucléo -> Rpi
 HAL_StatusTypeDef res1;
@@ -161,7 +160,7 @@ uint16_t my_motor_value[5] = {0, 0, 0, 0, 0};
 //Partie UART en interrupt
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	insert(&command_hist, command_buffer);
+	write_r_buffer(commands_buffer, command_buffer);
 	res1=HAL_UART_Receive_IT(&huart2, &command_buffer, 1);
 }
 
@@ -200,6 +199,8 @@ int main(void)
 	//Partie capteur de température du compresseur
 	uint16_t raw;
 	float compr_temp;
+	uint8_t temperatures[TEMPERATURES_SIZE] = {0};
+	uint8_t temperatures_mean = 0;
 
 	// explication de la conversion des valeurs de l'ADC en température
 	// dans le fichier "Equation_Sonde_PT100, il y a 2 courbes, ces coeffs sont respectivement les pentes et les ordonnées à l'origine
@@ -262,7 +263,6 @@ int main(void)
 	//a peu près temps minimal de delay pour laisser le temps aux moteurs de s'initialiser
 	HAL_Delay(2600);
 	//On lance l'interruption sur l'UART2, à relancer dans le callback !
-	command_hist = NULL;
 	res1=HAL_UART_Receive_IT(&huart2, &command_buffer, 1);
 
 
@@ -285,7 +285,6 @@ int main(void)
 			my_motor_value[2] = 0;
 			my_motor_value[3] = 0;
 			my_motor_value[4] = 0;
-			HAL_Delay(2600);
 			// arrêt EV 1, 2, 3 et Purge
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
 			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
@@ -329,10 +328,6 @@ int main(void)
 		res2 = HAL_I2C_Master_Receive(&hi2c1, 0xf1, I2C_buf, 4, 200);
 		if (res2 == HAL_OK){
 			//Régulation Pression
-			//Lecture de la pression (ET de la température un jour ?) => déterminer un Offset pour tout le match sur les vals de pression ? (voire toutes les 10 secondes)
-			//sprintf((char*)p_buf, "I2C : %d %d %d %d\r\n", (int)I2C_buf[0], (int)I2C_buf[1], (int)I2C_buf[2], (int)I2C_buf[3]);
-			//HAL_UART_Receive(&huart2, p_buf, 4, 100);
-
 			//Calcul de la pression en 10èmes de bar RELATIFS
 			//voir infos_pressure_sensor plus haut pour infos sur variables
 			P15bit = (int)((I2C_buf[0] << 8)|I2C_buf[1]);
@@ -344,13 +339,7 @@ int main(void)
 			pressure_val = pressure_val * 0.1; // -0,000932
 
 			//calcul de la moyenne de toutes les pressions précédentes
-			//tant que le tableau n'est pas plein, on remplit
-			//if (pressures[PRESSURES_SIZE-1] == 0){
-			//	pressures[pressures_full_counter] = (int)pressure_val;
-			//}
-			//dès qu'il est plein, on calcule la moyenne du tableau renouvelé
 			//on décale tout le tableau vers la droite, en faisant donc disparaître la valeur la plus ancienne
-
 			for (int i = PRESSURES_SIZE-1; i > 0; i--){
 				pressures[i] = pressures[i-1];
 			}
@@ -366,7 +355,7 @@ int main(void)
 			if (pressures_mean > (Press_order)){ // arrêter compresseur si dépassement de la pression de consigne
 				my_motor_value[4] = 0;
 			}
-			else if (pressures_mean < (Press_order - 2)) { // démarrage compresseur avec hysteresis de 0.4 bar
+			else if (pressures_mean < (Press_order - 2)) { // démarrage compresseur avec hysteresis de 0.2 bar
 				if(Press_order >= 0 && COMPRESSOR_ENABLE){
 					my_motor_value[4] = COMPRESSOR_SPEED;
 				}
@@ -376,20 +365,9 @@ int main(void)
 
 			//on remet à 0 la moyenne des pressions
 			pressures_mean = 0;
-
-
-			//retourner à la Rpi la pression courante du réservoir en dixième de bar [0ZZZZZZZ], MSB utilisé pour erreur de lecture en I2C de la pression
-			//return_buffer[0] = (uint8_t)pressure_val;
 		}
-		//retourner [10000000] si on arrive pas à communiquer avec le capteur de Pression
-		/*
-		else {
-			return_buffer[0]|=128;
-		}
-		 */
 
-		//Lecture Température du compresseur réservoir et activation ou désactivation du compresseur en fonction SSI il est pas déjà désactivé
-		//#####A IMPLEMENTER : Lecture de la température en analogique sonde PT100#####
+		//Lecture Température du compresseur réservoir (sonde PT100) et activation ou désactivation du compresseur en fonction SSI il est pas déjà désactivé
 		//start an ADC conversion
 		HAL_ADC_Start(&hadc1);
 		//processor waits for an ADC conversion to complete
@@ -403,19 +381,31 @@ int main(void)
 		compr_temp = res_to_temp_mult * (raw_to_res_mult * raw + raw_to_res_offset) + res_to_temp_offset;
 
 		//si Température critique, arrêter le compresseur et notifier la température critique dans le retour à la Rpi
-		/*
-		if (compr_temp > COMPR_CRIT_TEMP) {
-			my_motor_value[4] = 0;
-			return_buffer[1]|=128;
+		//on décale tout le tableau vers la droite, en faisant donc disparaître la valeur la plus ancienne
+		for (int i = TEMPERATURES_SIZE_1; i > 0; i--){
+			temperatures[i] = temperatures[i-1];
 		}
-		 */
 
+		//On ajoute la nouvelle valeure
+		temperatures[0] = compr_temp;
+
+		//puis on fait la moyenne des pressions
+		for (int i = 0; i < TEMPERATURES_SIZE; i++){
+			temperatures_mean+=temperatures[i];
+		}
+		temperatures_mean /= TEMPERATURES_SIZE;
+
+		//arrêt compresseur si dépassement de la température critique
+		if (temperatures_mean > COMPR_CRIT_TEMP) {
+			my_motor_value[4] = 0;
+			Press_order = 0;
+		}
 
 		//Notifier a la Rpi la bonne reception du mot de commande
 		return_buffer[0]|= 1;
 		//Retourner les infos a la Rpi !
 		HAL_UART_Transmit(&huart2, return_buffer, 1, 100);
-		uint8_t command = dequeue(&command_hist);
+		uint8_t command = read_r_buffer(commands_buffer);
 		if(command != -1){
 			switch(command >> 6){
 			case 0:
