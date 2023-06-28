@@ -28,7 +28,7 @@ class PneumaticCommands:
         self._serial.write(b'\x01')
         
     def reset_motors(self):
-        LOGGER.info("Reset all 5 motors")
+        LOGGER.info("Reset moteurs_init DSHOT")
         self._serial.write(b'\x02')
 
     def stop_compressor(self, purge):

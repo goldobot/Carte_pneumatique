@@ -69,6 +69,9 @@ uint8_t last_EV_command = 0;
 int BAU_tick;
 uint8_t BAU_tick_enable = 0;
 
+//Partie Prematch et premiere init, a suppr quand pneuma faite
+uint8_t prematch_init = 0;
+
 //Partie commandes et retours Rpi
 //On teste un ring buffer
 #define RING_BUF_SIZE 25
@@ -495,6 +498,15 @@ int main(void)
 					COMPRESSOR_ENABLE = 0;
 				}
 				else{
+					if (prematch_init == 0){
+						my_motor_value[0] = 0;
+						my_motor_value[1] = 0;
+						my_motor_value[2] = 0;
+						my_motor_value[3] = 0;
+						my_motor_value[4] = 0;
+						HAL_Delay(2600);
+						prematch_init = 1;
+					}
 					//[10PPPPPP] : Val de consigne Pression, a recup SSI differente pour regulation au prochain tour de boucle
 					Press_order = command ^ (2 << 6);
 					COMPRESSOR_ENABLE = 1;
