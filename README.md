@@ -14,4 +14,4 @@ Le script python pour tester l'envoi de commandes sur la nucléo et les réponse
 TOOLS-DOCUMENTATION -> TOOLS
 
 Pinout : 
-![Pneuma_Pinout](https://github.com/goldobot/Carte_pneumatique/assets/90452075/5299fd09-087e-4b0d-a9cc-e80d472ba9d5)
+![248427577-6edad983-73cf-4a0e-a7a7-4d94c6e21541](https://github.com/goldobot/Carte_pneumatique/assets/90452075/e60d1074-b717-4cae-9470-711d7ffcace7)
